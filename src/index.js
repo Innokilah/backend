@@ -43,6 +43,10 @@ app.use(
 
 app.use("/uploads", express.static(path.resolve(__dirname, "../uploads")));
 
+app.get("/", (req, res) => {
+  res.json({ message: "Welcome to the Erhanive API" });
+});
+
 app.use("/api/health", healthRoutes);
 app.use("/api/listings", listingsRoutes);
 app.use("/api/owner", ownerRoutes);
