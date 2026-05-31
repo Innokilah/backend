@@ -1,17 +1,30 @@
 import { getPool } from "../db.js";
 
-const STATEMENTS = [
+const ALTER_STATEMENTS = [
   `ALTER TABLE users MODIFY COLUMN role ENUM('owner','admin','client') NOT NULL DEFAULT 'owner'`,
-  `ALTER TABLE listings
-    MODIFY COLUMN property_type ENUM('apartment','house','land','office','shop') NOT NULL`,
-  `ALTER TABLE listings
-    MODIFY COLUMN status ENUM('Draft','Pending Payment','Submitted','Approved','Rejected') NOT NULL DEFAULT 'Submitted'`,
-  `ALTER TABLE payments
-    ADD COLUMN IF NOT EXISTS payment_type ENUM('connection_fee','listing_submission') NOT NULL DEFAULT 'connection_fee' AFTER user_id`,
-  `ALTER TABLE payments
-    ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP NULL DEFAULT NULL AFTER provider_ref`,
-  `ALTER TABLE payments
-    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at`,
+  `ALTER TABLE listings MODIFY COLUMN property_type ENUM('apartment','house','land','office','shop') NOT NULL`,
+  `ALTER TABLE listings MODIFY COLUMN status ENUM('Draft','Pending Payment','Submitted','Approved','Rejected') NOT NULL DEFAULT 'Submitted'`,
+];
+
+const ADD_COLUMNS = [
+  {
+    table: "payments",
+    column: "payment_type",
+    statement: `ALTER TABLE payments ADD COLUMN payment_type ENUM('connection_fee','listing_submission') NOT NULL DEFAULT 'connection_fee' AFTER user_id`,
+  },
+  {
+    table: "payments",
+    column: "paid_at",
+    statement: `ALTER TABLE payments ADD COLUMN paid_at TIMESTAMP NULL DEFAULT NULL AFTER provider_ref`,
+  },
+  {
+    table: "payments",
+    column: "updated_at",
+    statement: `ALTER TABLE payments ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at`,
+  },
+];
+
+const CREATE_TABLE_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS message_threads (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     thread_type ENUM('owner_contact','support') NOT NULL,
@@ -56,7 +69,23 @@ const STATEMENTS = [
 
 export async function ensureAppSchema() {
   const pool = getPool();
-  for (const statement of STATEMENTS) {
+
+  for (const statement of ALTER_STATEMENTS) {
+    await pool.execute(statement);
+  }
+
+  for (const { table, column, statement } of ADD_COLUMNS) {
+    const [rows] = await pool.execute(
+      `SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
+      [table, column]
+    );
+
+    if (!rows?.length) {
+      await pool.execute(statement);
+    }
+  }
+
+  for (const statement of CREATE_TABLE_STATEMENTS) {
     await pool.execute(statement);
   }
 }
