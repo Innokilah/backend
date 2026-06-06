@@ -1,4 +1,3 @@
-import admin from "firebase-admin";
 import { env } from "../config/env.js";
 import {
   deactivatePushTokensByTokens,
@@ -6,86 +5,85 @@ import {
   listActivePushTokensForUsers,
 } from "../models/pushTokens.js";
 
-function initFirebaseApp() {
-  if (admin.apps.length > 0) return admin.app();
+const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
-  const serviceAccountString = String(env.firebase.serviceAccount || "").trim();
-  if (serviceAccountString) {
-    try {
-      const serviceAccount = JSON.parse(serviceAccountString);
-      return admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-      });
-    } catch (error) {
-      throw new Error("FIREBASE_SERVICE_ACCOUNT must be valid JSON");
-    }
-  }
-
-  if (env.firebase.credentialPath) {
-    return admin.initializeApp();
-  }
-
-  throw new Error(
-    "Firebase credentials are not configured. Set FIREBASE_SERVICE_ACCOUNT or GOOGLE_APPLICATION_CREDENTIALS."
-  );
+function isExpoPushToken(value) {
+  return /^ExponentPushToken\[.+\]$/.test(String(value || "")) ||
+    /^ExpoPushToken\[.+\]$/.test(String(value || ""));
 }
 
-const firebaseApp = initFirebaseApp();
+function chunk(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
 
 function dedupeTokens(rows = []) {
   const seen = new Set();
   return rows.filter((row) => {
-    const token = String(row?.expo_push_token || "").trim();
+    const token = String(row?.expo_push_token || "");
     if (!token || seen.has(token)) return false;
     seen.add(token);
     return true;
   });
 }
 
-function normalizeData(messageData = {}) {
-  const result = {};
-  Object.entries(messageData || {}).forEach(([key, value]) => {
-    const normalized =
-      value === undefined || value === null ? "" : String(value);
-    result[key] = normalized;
-  });
-  return result;
+async function postExpoMessages(messages) {
+  if (messages.length === 0) return [];
+
+  const headers = {
+    Accept: "application/json",
+    "Accept-Encoding": "gzip, deflate",
+    "Content-Type": "application/json",
+  };
+
+  if (env.expo.accessToken) {
+    headers.Authorization = `Bearer ${env.expo.accessToken}`;
+  }
+
+  const results = [];
+  for (const batch of chunk(messages, 100)) {
+    const response = await fetch(EXPO_PUSH_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(batch),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(data?.errors?.[0]?.message || "Expo push request failed");
+    }
+    const items = Array.isArray(data?.data) ? data.data : [];
+    results.push(...items);
+  }
+  return results;
 }
 
 async function sendToRows(rows, payload) {
-  const activeRows = dedupeTokens(rows);
+  const activeRows = dedupeTokens(rows).filter((row) =>
+    isExpoPushToken(row.expo_push_token)
+  );
   if (activeRows.length === 0) return { sent: 0 };
 
-  const tokens = activeRows.map((row) => String(row.expo_push_token).trim());
-  const message = {
-    tokens,
-    notification: {
-      title: payload.title,
-      body: payload.body,
-    },
-    data: normalizeData(payload.data),
-    android: {
-      priority: "high",
-    },
-    apns: {
-      headers: {
-        "apns-priority": "10",
-      },
-    },
-  };
+  const messages = activeRows.map((row) => ({
+    to: row.expo_push_token,
+    sound: "default",
+    title: payload.title,
+    body: payload.body,
+    data: payload.data || {},
+    channelId: payload.channelId || "default",
+  }));
 
-  const response = await admin.messaging(firebaseApp).sendMulticast(message);
+  const receipts = await postExpoMessages(messages);
   const invalidTokens = [];
 
-  response.responses.forEach((result, index) => {
-    if (!result.success) {
-      const code = result.error?.code;
-      if (
-        code === "messaging/invalid-registration-token" ||
-        code === "messaging/registration-token-not-registered"
-      ) {
-        invalidTokens.push(tokens[index]);
-      }
+  receipts.forEach((receipt, index) => {
+    if (
+      receipt?.status === "error" &&
+      receipt?.details?.error === "DeviceNotRegistered"
+    ) {
+      invalidTokens.push(activeRows[index]?.expo_push_token);
     }
   });
 
@@ -93,7 +91,7 @@ async function sendToRows(rows, payload) {
     await deactivatePushTokensByTokens(invalidTokens);
   }
 
-  return { sent: response.successCount, invalidated: invalidTokens.length };
+  return { sent: messages.length, invalidated: invalidTokens.length };
 }
 
 export async function sendPushToUsers(userIds, payload) {

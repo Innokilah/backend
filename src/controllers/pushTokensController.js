@@ -3,15 +3,16 @@ import {
   upsertPushToken,
 } from "../models/pushTokens.js";
 
-function isValidPushToken(value) {
-  return typeof value === "string" && String(value || "").trim().length > 0;
+function isValidExpoPushToken(value) {
+  return /^ExponentPushToken\[.+\]$/.test(String(value || "")) ||
+    /^ExpoPushToken\[.+\]$/.test(String(value || ""));
 }
 
 export async function registerPushToken(req, res, next) {
   try {
     const { expoPushToken, deviceId, platform } = req.body || {};
-    if (!isValidPushToken(expoPushToken)) {
-      res.status(400).json({ error: "A valid push token is required" });
+    if (!isValidExpoPushToken(expoPushToken)) {
+      res.status(400).json({ error: "A valid Expo push token is required" });
       return;
     }
 
