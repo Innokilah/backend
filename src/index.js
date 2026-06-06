@@ -14,6 +14,7 @@ import authRoutes from "./routes/auth.js";
 import messagesRoutes from "./routes/messages.js";
 import paymentsRoutes from "./routes/payments.js";
 import pushTokensRoutes from "./routes/pushTokens.js";
+import notificationsRoutes from "./routes/notifications.js";
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -56,6 +57,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/messages", messagesRoutes);
 app.use("/api/payments", paymentsRoutes);
 app.use("/api/push-tokens", pushTokensRoutes);
+app.use("/api/notifications", notificationsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });

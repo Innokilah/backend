@@ -25,6 +25,10 @@ export const env = {
   expo: {
     accessToken: process.env.EXPO_ACCESS_TOKEN || "",
   },
+  firebase: {
+    serviceAccount: process.env.FIREBASE_SERVICE_ACCOUNT || "",
+    credentialPath: process.env.GOOGLE_APPLICATION_CREDENTIALS || "",
+  },
   paychangu: {
     baseUrl: process.env.PAYCHANGU_BASE_URL || "https://api.paychangu.com",
     secretKey: process.env.PAYCHANGU_SECRET_KEY || "",

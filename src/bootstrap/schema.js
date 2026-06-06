@@ -65,6 +65,17 @@ const CREATE_TABLE_STATEMENTS = [
     UNIQUE KEY uniq_user_device (user_id, device_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   )`,
+  `CREATE TABLE IF NOT EXISTS notifications (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    title VARCHAR(255) DEFAULT NULL,
+    body TEXT DEFAULT NULL,
+    notification_type ENUM('local','push') NOT NULL DEFAULT 'local',
+    data TEXT DEFAULT NULL,
+    is_read TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`,
 ];
 
 export async function ensureAppSchema() {
